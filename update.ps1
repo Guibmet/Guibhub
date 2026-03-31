@@ -19,9 +19,9 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 function Show-Menu {
     param ([array]$releases)
     Clear-Host
-    Write-Host "==============================================" -ForegroundColor Cyan
-    Write-Host "     CENTRAL DE ATUALIZAÇÕES - $repoName" -ForegroundColor Cyan
-    Write-Host "==============================================" -ForegroundColor Cyan
+    Write-Host "==============================================" -ForegroundColor Purple
+    Write-Host "     CENTRAL DE ATUALIZAÇÕES - $repoName" -ForegroundColor Purple
+    Write-Host "==============================================" -ForegroundColor Purple
     Write-Host "Selecione uma versão para ver detalhes e instalar:`n"
 
     for ($i = 0; $i -lt $releases.Count; $i++) {
@@ -63,7 +63,7 @@ try {
 
                 # 4. DOWNLOAD
                 Write-Host "`n[1/3] Baixando arquivos..." -ForegroundColor Yellow
-                Invoke-WebRequest -Uri $selected.zipball_url -OutFile $tempZip
+                Invoke-WebRequest -Uri $browser_download_url -OutFile $tempZip
 
                 # 5. EXTRAÇÃO TEMPORÁRIA
                 Write-Host "[2/3] Extraindo pacote..." -ForegroundColor Yellow
