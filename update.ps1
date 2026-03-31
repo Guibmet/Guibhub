@@ -4,7 +4,7 @@
 
 # --- CONFIGURAÇÕES DO REPOSITÓRIO ---
 $repoOwner = "Guibmet"
-$repoName  = "Guithub"
+$repoName  = "Guibhub"
 $destPath  = "C:\" 
 $apiUrl    = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=5"
 
