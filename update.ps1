@@ -19,9 +19,9 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 function Show-Menu {
     param ([array]$releases)
     Clear-Host
-    Write-Host "==============================================" -ForegroundColor Purple
-    Write-Host "     CENTRAL DE ATUALIZAÇÕES - $repoName" -ForegroundColor Purple
-    Write-Host "==============================================" -ForegroundColor Purple
+    Write-Host "==============================================" -ForegroundColor Magenta
+    Write-Host "     CENTRAL DE ATUALIZAÇÕES - $repoName" -ForegroundColor Magenta
+    Write-Host "==============================================" -ForegroundColor Magenta
     Write-Host "Selecione uma versão para ver detalhes e instalar:`n"
 
     for ($i = 0; $i -lt $releases.Count; $i++) {
