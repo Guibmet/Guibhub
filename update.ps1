@@ -5,12 +5,12 @@
 # --- CONFIGURAÇÕES ---
 $repoOwner = "Guibmet"
 $repoName  = "Guibhub"
-$destRoot  = "C:\" 
+$destRoot  = "C:\"  # Raiz onde a pasta do zip será criada
 $apiUrl    = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=5"
 
-# Verifica Admin
+# 1. VERIFICAÇÃO DE ADMINISTRADOR
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    [System.Windows.Forms.MessageBox]::Show("Erro: Execute como Administrador!", "Atenção", 0, 16)
+    [System.Windows.Forms.MessageBox]::Show("Erro: Execute como Administrador!", "Erro de Permissão", 0, 16)
     exit
 }
 
@@ -18,8 +18,9 @@ try {
     $releases = Invoke-RestMethod -Uri $apiUrl -Method Get
     if ($releases.Count -eq 0) { exit }
 
+    # --- JANELA 320x320 ---
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Instalador de Updates"
+    $form.Text = "Updater $repoName"
     $form.Size = New-Object System.Drawing.Size(320, 320)
     $form.StartPosition = "CenterScreen"
     $form.FormBorderStyle = "FixedDialog"
@@ -28,13 +29,13 @@ try {
     $listBox = New-Object System.Windows.Forms.ListBox
     $listBox.Location = New-Object System.Drawing.Point(10, 35)
     $listBox.Size = New-Object System.Drawing.Size(285, 150)
-    foreach ($r in $releases) { [void]$listBox.Items.Add($r.tag_name) }
+    foreach ($r in $releases) { $listBox.Items.Add($r.tag_name) }
     $form.Controls.Add($listBox)
 
     $btnInstall = New-Object System.Windows.Forms.Button
-    $btnInstall.Text = "Sincronizar Arquivos Novos"
+    $btnInstall.Text = "Ver Notas e Instalar"
     $btnInstall.Location = New-Object System.Drawing.Point(10, 200)
-    $btnInstall.Size = New-Object System.Drawing.Size(285, 40)
+    $btnInstall.Size = New-Object System.Drawing.Size(285, 30)
     
     $btnInstall.Add_Click({
         $selTag = $listBox.SelectedItem
@@ -48,64 +49,57 @@ try {
             return
         }
 
-        # Nome da pasta baseado no ZIP
-        $folderName = $asset.name.Replace(".zip", "")
-        $finalPath = Join-Path $destRoot $folderName
+        # --- Lógica de Nome da Pasta ---
+        $zipFileName = $asset.name
+        $folderName = [System.IO.Path]::GetFileNameWithoutExtension($zipFileName)
+        $finalDestPath = Join-Path $destRoot $folderName
 
-        if ([System.Windows.Forms.MessageBox]::Show("Instalar novos arquivos em: $finalPath ?", "Confirmar", 4, 32) -eq "Yes") {
+        $msg = "Versão: $($selected.tag_name)`nArquivo: $zipFileName`nDestino: $finalDestPath`n`nNotas: $($selected.body)`n`nDeseja continuar?"
+        $confirm = [System.Windows.Forms.MessageBox]::Show($msg, "Confirmar", 4, 32)
+        
+        if ($confirm -eq "Yes") {
             $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
             
-            $tempZip = "$env:TEMP\update_file.zip"
-            $tempFolder = "$env:TEMP\extracao_temp"
+            $tempZip = "$env:TEMP\update_download.zip"
+            $tempExtract = "$env:TEMP\extract_tmp"
             
-            if (Test-Path $tempZip) { Remove-Item $tempZip -Force }
-            if (Test-Path $tempFolder) { Remove-Item $tempFolder -Recurse -Force }
-
-            # Download e Extração
             Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tempZip
-            Expand-Archive -Path $tempZip -DestinationPath $tempFolder -Force
+            
+            if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
+            Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
 
-            # 1. Cria a pasta mestre no C:\ se não existir
-            if (-not (Test-Path $finalPath)) {
-                New-Item -ItemType Directory -Path $finalPath -Force | Out-Null
+            # Cria a pasta principal se não existir
+            if (-not (Test-Path $finalDestPath)) {
+                New-Item -ItemType Directory -Path $finalDestPath -Force | Out-Null
             }
 
-            # 2. Varredura de arquivos (Lógica: Apenas Adicionar)
-            $itensNoZip = Get-ChildItem -Path $tempFolder -Recurse
-            
-            foreach ($item in $itensNoZip) {
-                # Calcula o caminho de destino removendo o prefixo da pasta temporária
-                $relPath = $item.FullName.Substring($tempFolder.Length).TrimStart('\').TrimStart('/')
-                $targetFile = Join-Path $finalPath $relPath
+            # Sincroniza arquivos (Adiciona novos, mantém antigos)
+            $files = Get-ChildItem -Path $tempExtract -Recurse | Where-Object { -not $_.PSIsContainer }
+            foreach ($file in $files) {
+                # Calcula caminho relativo dentro do ZIP extraído
+                $rel = $file.FullName.Substring($tempExtract.Length + 1)
+                $targetFile = Join-Path $finalDestPath $rel
+                $targetDir = Split-Path $targetFile
 
-                if ($item.PSIsContainer) {
-                    # Se for pasta, garante que existe no C:\
-                    if (-not (Test-Path $targetFile)) {
-                        New-Item -ItemType Directory -Path $targetFile -Force | Out-Null
-                    }
-                } else {
-                    # Se for arquivo, SÓ COPIA SE NÃO EXISTIR
-                    if (-not (Test-Path $targetFile)) {
-                        $parent = Split-Path $targetFile
-                        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
-                        Copy-Item -Path $item.FullName -Destination $targetFile -Force
-                    }
+                if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+                
+                # SÓ COPIA SE NÃO EXISTIR NO C:\NOME_DO_ZIP\
+                if (-not (Test-Path $targetFile)) {
+                    Copy-Item $file.FullName -Destination $targetFile
                 }
             }
 
-            # Limpeza
             Remove-Item $tempZip -Force
-            Remove-Item $tempFolder -Recurse -Force
+            Remove-Item $tempExtract -Recurse -Force
             
             $form.Cursor = [System.Windows.Forms.Cursors]::Default
-            [System.Windows.Forms.MessageBox]::Show("Arquivos sincronizados com sucesso!", "Concluído", 0, 64)
+            [System.Windows.Forms.MessageBox]::Show("Sincronização concluída em: $folderName", "Sucesso", 0, 64)
             $form.Close()
         }
     })
-    
     $form.Controls.Add($btnInstall)
     $form.ShowDialog() | Out-Null
 
 } catch {
-    [System.Windows.Forms.MessageBox]::Show("Erro no processo: $_", "Erro", 0, 16)
+    [System.Windows.Forms.MessageBox]::Show("Erro: $_", "Erro Crítico", 0, 16)
 }
