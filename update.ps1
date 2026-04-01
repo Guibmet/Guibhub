@@ -5,7 +5,7 @@
 # --- CONFIGURAÇÕES ---
 $repoOwner = "Guibmet"
 $repoName  = "Guibhub"
-$destRoot  = "C:\"  # Raiz onde a pasta do zip será criada
+$destPath  = "C:\" 
 $apiUrl    = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=5"
 
 # 1. VERIFICAÇÃO DE ADMINISTRADOR
@@ -18,13 +18,19 @@ try {
     $releases = Invoke-RestMethod -Uri $apiUrl -Method Get
     if ($releases.Count -eq 0) { exit }
 
-    # --- JANELA 320x320 ---
+    # --- CRIAÇÃO DA JANELA (320x320) ---
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Updater $repoName"
     $form.Size = New-Object System.Drawing.Size(320, 320)
     $form.StartPosition = "CenterScreen"
     $form.FormBorderStyle = "FixedDialog"
     $form.MaximizeBox = $false
+
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = "Selecione a Versão:"
+    $label.Location = New-Object System.Drawing.Point(10, 10)
+    $label.AutoSize = $true
+    $form.Controls.Add($label)
 
     $listBox = New-Object System.Windows.Forms.ListBox
     $listBox.Location = New-Object System.Drawing.Point(10, 35)
@@ -42,25 +48,22 @@ try {
         if ($null -eq $selTag) { return }
         
         $selected = $releases | Where-Object { $_.tag_name -eq $selTag }
-        $asset = $selected.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
         
-        if ($null -eq $asset) {
-            [System.Windows.Forms.MessageBox]::Show("Nenhum .zip encontrado!", "Erro", 0, 16)
-            return
-        }
-
-        # --- Lógica de Nome da Pasta ---
-        $zipFileName = $asset.name
-        $folderName = [System.IO.Path]::GetFileNameWithoutExtension($zipFileName)
-        $finalDestPath = Join-Path $destRoot $folderName
-
-        $msg = "Versão: $($selected.tag_name)`nArquivo: $zipFileName`nDestino: $finalDestPath`n`nNotas: $($selected.body)`n`nDeseja continuar?"
-        $confirm = [System.Windows.Forms.MessageBox]::Show($msg, "Confirmar", 4, 32)
+        # Mostra Changelog em um popup
+        $msg = "Notas da Versão $($selected.tag_name):`n`n$($selected.body)`n`nDeseja instalar?"
+        $confirm = [System.Windows.Forms.MessageBox]::Show($msg, "Confirmar Instalação", 4, 32)
         
         if ($confirm -eq "Yes") {
             $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
             
-            $tempZip = "$env:TEMP\update_download.zip"
+            # BUSCA O ZIP NOS ASSETS
+            $asset = $selected.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
+            if ($null -eq $asset) {
+                [System.Windows.Forms.MessageBox]::Show("Nenhum .zip encontrado nos Assets!", "Erro", 0, 16)
+                return
+            }
+
+            $tempZip = "$env:TEMP\update.zip"
             $tempExtract = "$env:TEMP\extract_tmp"
             
             Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tempZip
@@ -68,36 +71,26 @@ try {
             if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
             Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
 
-            # Cria a pasta principal se não existir
-            if (-not (Test-Path $finalDestPath)) {
-                New-Item -ItemType Directory -Path $finalDestPath -Force | Out-Null
-            }
-
-            # Sincroniza arquivos (Adiciona novos, mantém antigos)
+            # Lógica de cópia sem sobrescrever
             $files = Get-ChildItem -Path $tempExtract -Recurse | Where-Object { -not $_.PSIsContainer }
             foreach ($file in $files) {
-                # Calcula caminho relativo dentro do ZIP extraído
                 $rel = $file.FullName.Substring($tempExtract.Length + 1)
-                $targetFile = Join-Path $finalDestPath $rel
-                $targetDir = Split-Path $targetFile
-
-                if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
-                
-                # SÓ COPIA SE NÃO EXISTIR NO C:\NOME_DO_ZIP\
-                if (-not (Test-Path $targetFile)) {
-                    Copy-Item $file.FullName -Destination $targetFile
-                }
+                $target = Join-Path $destPath $rel
+                $dir = Split-Path $target
+                if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+                if (-not (Test-Path $target)) { Copy-Item $file.FullName -Destination $target }
             }
 
             Remove-Item $tempZip -Force
             Remove-Item $tempExtract -Recurse -Force
             
             $form.Cursor = [System.Windows.Forms.Cursors]::Default
-            [System.Windows.Forms.MessageBox]::Show("Sincronização concluída em: $folderName", "Sucesso", 0, 64)
+            [System.Windows.Forms.MessageBox]::Show("Concluído!", "Sucesso", 0, 64)
             $form.Close()
         }
     })
     $form.Controls.Add($btnInstall)
+
     $form.ShowDialog() | Out-Null
 
 } catch {
