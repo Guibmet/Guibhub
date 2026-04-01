@@ -8,6 +8,7 @@ $repoName  = "Guibhub"
 $destRoot  = "C:\" 
 $apiUrl    = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=5"
 
+# Verifica Admin
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     [System.Windows.Forms.MessageBox]::Show("Erro: Execute como Administrador!", "Atenção", 0, 16)
     exit
@@ -27,7 +28,7 @@ try {
     $listBox = New-Object System.Windows.Forms.ListBox
     $listBox.Location = New-Object System.Drawing.Point(10, 35)
     $listBox.Size = New-Object System.Drawing.Size(285, 150)
-    foreach ($r in $releases) { $listBox.Items.Add($r.tag_name) }
+    foreach ($r in $releases) { [void]$listBox.Items.Add($r.tag_name) }
     $form.Controls.Add($listBox)
 
     $btnInstall = New-Object System.Windows.Forms.Button
@@ -47,11 +48,11 @@ try {
             return
         }
 
-        # Define o nome da pasta com base no nome do ZIP
-        $folderName = [System.IO.Path]::GetFileNameWithoutExtension($asset.name)
+        # Nome da pasta baseado no ZIP
+        $folderName = $asset.name.Replace(".zip", "")
         $finalPath = Join-Path $destRoot $folderName
 
-        if ([System.Windows.Forms.MessageBox]::Show("Deseja adicionar arquivos novos em $finalPath?", "Confirmar", 4, 32) -eq "Yes") {
+        if ([System.Windows.Forms.MessageBox]::Show("Instalar novos arquivos em: $finalPath ?", "Confirmar", 4, 32) -eq "Yes") {
             $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
             
             $tempZip = "$env:TEMP\update_file.zip"
@@ -60,36 +61,34 @@ try {
             if (Test-Path $tempZip) { Remove-Item $tempZip -Force }
             if (Test-Path $tempFolder) { Remove-Item $tempFolder -Recurse -Force }
 
-            # Download e Extração para pasta temporária
+            # Download e Extração
             Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tempZip
             Expand-Archive -Path $tempZip -DestinationPath $tempFolder -Force
 
-            # 1. Garante que a pasta de destino no C:\ existe
+            # 1. Cria a pasta mestre no C:\ se não existir
             if (-not (Test-Path $finalPath)) {
                 New-Item -ItemType Directory -Path $finalPath -Force | Out-Null
             }
 
-            # 2. Percorre todos os arquivos extraídos no temporário
+            # 2. Varredura de arquivos (Lógica: Apenas Adicionar)
             $itensNoZip = Get-ChildItem -Path $tempFolder -Recurse
             
-            foreach ($item em $itensNoZip) {
-                # Calcula o caminho que o arquivo deveria ter no C:\
-                $caminhoRelativo = $item.FullName.Substring($tempFolder.Length)
-                $caminhoDestinoFinal = Join-Path $finalPath $caminhoRelativo
+            foreach ($item in $itensNoZip) {
+                # Calcula o caminho de destino removendo o prefixo da pasta temporária
+                $relPath = $item.FullName.Substring($tempFolder.Length).TrimStart('\').TrimStart('/')
+                $targetFile = Join-Path $finalPath $relPath
 
                 if ($item.PSIsContainer) {
-                    # Se for uma pasta, cria se não existir
-                    if (-not (Test-Path $caminhoDestinoFinal)) {
-                        New-Item -ItemType Directory -Path $caminhoDestinoFinal -Force | Out-Null
+                    # Se for pasta, garante que existe no C:\
+                    if (-not (Test-Path $targetFile)) {
+                        New-Item -ItemType Directory -Path $targetFile -Force | Out-Null
                     }
                 } else {
-                    # Se for um arquivo, SÓ COPIA SE NÃO EXISTIR
-                    if (-not (Test-Path $caminhoDestinoFinal)) {
-                        # Garante que a pasta pai do arquivo existe
-                        $parentDir = Split-Path $caminhoDestinoFinal
-                        if (-not (Test-Path $parentDir)) { New-Item -ItemType Directory -Path $parentDir -Force | Out-Null }
-                        
-                        Copy-Item -Path $item.FullName -Destination $caminhoDestinoFinal
+                    # Se for arquivo, SÓ COPIA SE NÃO EXISTIR
+                    if (-not (Test-Path $targetFile)) {
+                        $parent = Split-Path $targetFile
+                        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+                        Copy-Item -Path $item.FullName -Destination $targetFile -Force
                     }
                 }
             }
@@ -99,7 +98,7 @@ try {
             Remove-Item $tempFolder -Recurse -Force
             
             $form.Cursor = [System.Windows.Forms.Cursors]::Default
-            [System.Windows.Forms.MessageBox]::Show("Arquivos novos adicionados com sucesso!", "Concluído", 0, 64)
+            [System.Windows.Forms.MessageBox]::Show("Arquivos sincronizados com sucesso!", "Concluído", 0, 64)
             $form.Close()
         }
     })
@@ -108,5 +107,5 @@ try {
     $form.ShowDialog() | Out-Null
 
 } catch {
-    [System.Windows.Forms.MessageBox]::Show("Erro: $_", "Erro", 0, 16)
+    [System.Windows.Forms.MessageBox]::Show("Erro no processo: $_", "Erro", 0, 16)
 }
