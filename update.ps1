@@ -61,9 +61,24 @@ try {
                 $tempZip = "$env:TEMP\update.zip"
                 $tempExtract = "$env:TEMP\extract_tmp"
 
-                # 4. DOWNLOAD
-                Write-Host "`n[1/3] Baixando arquivos..." -ForegroundColor Yellow
-                Invoke-WebRequest -Uri $browser_download_url -OutFile $tempZip
+                # 4. DOWNLOAD (Buscando nos Assets da Release)
+Write-Host "`n[1/3] Procurando arquivo .zip nos Assets..." -ForegroundColor Yellow
+
+# Filtra o primeiro asset que termina com .zip
+$asset = $selected.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
+
+if ($null -eq $asset) {
+    Write-Host "![ERRO] Nenhum arquivo .zip encontrado nos Assets desta release." -ForegroundColor Red
+    Pause
+    continue # Volta para o menu
+}
+
+$zipUrl = $asset.browser_download_url
+$tempZip = "$env:TEMP\update_download.zip"
+
+Write-Host "Baixando: $($asset.name)..." -ForegroundColor Cyan
+Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip
+
 
                 # 5. EXTRAÇÃO TEMPORÁRIA
                 Write-Host "[2/3] Extraindo pacote..." -ForegroundColor Yellow
