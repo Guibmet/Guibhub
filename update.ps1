@@ -5,7 +5,7 @@
 $repoOwner = "Guibmet"
 $repoName  = "Guibhub"
 # DICA: Usar $env:USERPROFILE torna o script funcional SEM ADMIN
-$destRoot  = "$env:USERPROFILE\Downloads\Guibhub_Files" 
+$destRoot  = "$env:C:\" 
 $apiUrl    = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=5"
 
 # Configura segurança de TLS
