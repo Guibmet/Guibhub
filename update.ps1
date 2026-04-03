@@ -8,7 +8,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # --- CONFIGURAÇÕES DO SCRIPT ---
 $repoOwner = "Guibmet"
 $repoName  = "Guibhub"
-$destRoot  = "C:\$repoName" 
+$destRoot  = "C:\" 
 $apiUrl    = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=8"
 
 # Otimização de rede e visual
