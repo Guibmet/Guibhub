@@ -1,86 +1,75 @@
-# 1. FORÇAR ADMINISTRADOR (Necessário para escrever no C:\)
+# 1. FORÇAR ABERTURA EM NOVA JANELA COMO ADMINISTRADOR
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    # Abre uma nova instância do PowerShell em uma nova janela, como Admin
+    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" " -Verb RunAs
     exit
 }
 
-# --- CONFIGURAÇÕES ---
+# --- CONFIGURAÇÕES DO SCRIPT ---
 $repoOwner = "Guibmet"
 $repoName  = "Guibhub"
-$destRoot  = "C:\$repoName" # Extração direta no C:\
+$destRoot  = "C:\$repoName" 
 $apiUrl    = "https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=8"
 
-# Configurações de performance e segurança
+# Otimização de rede e visual
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $progressPreference = 'SilentlyContinue'
 
-function Show-Interface {
+# Função para desenhar o menu igual à imagem (MAS)
+function Desenhar-Menu {
     Clear-Host
-    Write-Host "=========================================================" -ForegroundColor Cyan
-    Write-Host "          GUIBHUB - GERENCIADOR DE ATUALIZAÇÕES          " -ForegroundColor White
-    Write-Host "=========================================================" -ForegroundColor Cyan
-    Write-Host " Status: ADMINISTRADOR ATIVO | Destino: $destRoot" -ForegroundColor Gray
+    Write-Host " _________________________________________________________" -ForegroundColor Cyan
+    Write-Host "                                                         "
+    Write-Host "         GUIBHUB - GERENCIADOR DE ATUALIZACOES           " -ForegroundColor White
+    Write-Host " _________________________________________________________" -ForegroundColor Cyan
+    Write-Host "  Modo: Administrador | Destino: $destRoot" -ForegroundColor Gray
     Write-Host ""
 }
 
 try {
-    Show-Interface
-    Write-Host " [?] Buscando releases no GitHub..." -ForegroundColor Yellow
+    Desenhar-Menu
+    Write-Host " [?] Conectando ao GitHub..." -ForegroundColor Yellow
     $releases = Invoke-RestMethod -Uri $apiUrl -Method Get
 
     if ($null -eq $releases) { 
-        Write-Host " [!] Nenhuma release encontrada." -ForegroundColor Red
+        Write-Host " [!] Erro: Nao foi possivel obter as versões." -ForegroundColor Red
         pause; exit 
     }
 
-    # --- MENU DE SELEÇÃO ESTILO MAS ---
-    Write-Host " Escolha uma versão para extrair no C:\:" -ForegroundColor White
+    Write-Host " Escolha a versao para instalar no Disco local (C:):" -ForegroundColor White
+    Write-Host ""
     for ($i = 0; $i -lt $releases.Count; $i++) {
-        Write-Host "  [$i] $($releases[$i].tag_name)" -ForegroundColor Green
+        # Formatação estilo [1], [2]...
+        $index = "[$i]"
+        Write-Host "  $($index.PadRight(4)) $($releases[$i].tag_name)" -ForegroundColor Green
     }
-    Write-Host "  [X] Sair" -ForegroundColor Red
+    Write-Host "  [X]  Sair" -ForegroundColor Red
     Write-Host ""
     
-    $choice = Read-Host " Digite a opção "
+    $choice = Read-Host " Digite uma opcao "
 
     if ($choice -eq 'x' -or $choice -eq 'X') { exit }
-    $selected = $releases[[int]$choice]
+    
+    # Validação simples de entrada
+    if ($choice -match '^\d+$' -and [int]$choice -lt $releases.Count) {
+        $selected = $releases[[int]$choice]
+    } else {
+        Write-Host " Opcao invalida!" -ForegroundColor Red
+        Start-Sleep -Seconds 2
+        & $PSCommandPath # Reinicia o script
+        exit
+    }
 
-    # --- PROCESSAMENTO ---
+    # --- DOWNLOAD E EXTRAÇÃO ---
     $asset = $selected.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
-    if ($null -eq $asset) { throw "Nenhum arquivo .zip encontrado nesta release." }
+    if ($null -eq $asset) { throw "Nenhum arquivo .zip encontrado." }
 
     $tempZip = "$env:TEMP\update_temp.zip"
     
-    Show-Interface
-    Write-Host " [+] Versão Selecionada: $($selected.tag_name)" -ForegroundColor Cyan
-    Write-Host " [+] Baixando pacote..." -ForegroundColor Gray
+    Desenhar-Menu
+    Write-Host " [+] Selecionado: $($selected.tag_name)" -ForegroundColor Cyan
+    Write-Host " [+] Baixando arquivos..." -ForegroundColor Gray
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tempZip
 
-    Write-Host " [+] Preparando diretório $destRoot..." -ForegroundColor Gray
-    if (-not (Test-Path $destRoot)) { New-Item -ItemType Directory -Path $destRoot -Force | Out-Null }
-
-    Write-Host " [+] Extraindo arquivos (Sobrescrevendo)..." -ForegroundColor Gray
-    
-    # Motor de extração ultra-rápido (Shell.Application)
-    $shell = New-Object -ComObject Shell.Application
-    $zipFile = $shell.NameSpace($tempZip)
-    $destFolder = $shell.NameSpace($destRoot)
-    
-    # 0x14 = 4 (sem barra de progresso) + 16 (sim para tudo/sobrescrever)
-    $destFolder.CopyHere($zipFile.Items(), 0x14)
-
-    # Limpeza
-    Remove-Item $tempZip -Force
-
-    Write-Host ""
-    Write-Host " =========================================================" -ForegroundColor Cyan
-    Write-Host "  SUCESSO: Arquivos atualizados em $destRoot" -ForegroundColor Green
-    Write-Host " =========================================================" -ForegroundColor Cyan
-    Write-Host " Pressione qualquer tecla para fechar..."
-    $null = [Console]::ReadKey($true)
-
-} catch {
-    Write-Host "`n [ERRO] $_" -ForegroundColor Red
-    pause
-}
+    if (-not (Test-Path $destRoot)) { 
+        New-Item -ItemType Directory -Path $destRoot -Force | Out
